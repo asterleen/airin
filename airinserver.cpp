@@ -726,13 +726,6 @@ void AirinServer::processMessage(AirinClient *client, QString recCode, QString m
     log (QString("Client %1 sent a message. His last message time is %2, now is %3.")
          .arg(client->externalId()).arg(lastTime).arg(now));
 
-    // чтобы вот
-    // такое не слипалось в "воттакое".\р никогда не бывает без \н нахуя два пробела?
-    // бывает на маках не в этом случае
-    // сейчас не об этом.
-
-    // AirinCommands::process("yaebal", client, this);
-
     if (lastTime == 0 || now - lastTime > minMessageDelay)
     {
         lastMessageTime[client->externalId()] = now;
