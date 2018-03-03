@@ -33,7 +33,7 @@
 #include "airincommands.h"
 
 
-#define AIRIN_VERSION "4.6"
+#define AIRIN_VERSION "4.6.1-kk"
 #define AIRIN_MAX_API_LEVEL 3
 #define AIRIN_MIN_API_LEVEL 2
 
@@ -93,6 +93,8 @@ private:
     bool serverReady;
     bool continueWithoutDB;
     bool forceDefaultName;
+    bool discloseUserIds;
+    bool useMiscInfoAsName; // web-frontend must write appropriate content in `misc_info` field of `auth` table
     QString hashSalt;
     QString logFile;
     QString sqlDbType;

@@ -297,7 +297,7 @@ QString AirinDatabase::getUserId(QString internalToken)
     if (!qsqUidGet.exec())
     {
         log ("Could not execute this: "+qsqUidGet.lastQuery(), LL_DEBUG);
-        log ("WARNING! Could not get access_token for user: "+qsqUidGet.lastError().text(), LL_WARNING);
+        log ("WARNING! Could not get user_id for user: "+qsqUidGet.lastError().text(), LL_WARNING);
         return QString();
     }
         else
@@ -311,6 +311,28 @@ QString AirinDatabase::getUserId(QString internalToken)
                 return qsqUidGet.value("user_id").toString();
             else
                 return QString();
+        }
+    }
+}
+
+QString AirinDatabase::getMiscInfo(QString userLogin)
+{
+    QSqlQuery qsqGetMisc;
+    qsqGetMisc.prepare("SELECT misc_info FROM auth WHERE user_id = ?");
+    qsqGetMisc.addBindValue(userLogin);
+    if (!qsqGetMisc.exec())
+    {
+        log ("Could not execute this: "+qsqGetMisc.lastQuery(), LL_DEBUG);
+        log ("WARNING! Could not get misc_info for user: "+qsqGetMisc.lastError().text(), LL_WARNING);
+        return QString();
+    }
+        else
+    {
+        if (!qsqGetMisc.first())
+            return QString();
+        else
+        {
+            return qsqGetMisc.value("misc_info").toString().trimmed();
         }
     }
 }

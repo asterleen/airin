@@ -53,6 +53,7 @@ public:
     QList<AirinMessage>* getMessages(int amount, int from = 0, QString userLogin = QString());
     uint lastMessage();
     QString getUserId(QString internalToken);
+    QString getMiscInfo (QString userLogin);
     bool killAuthSession(QString internalToken);
 
     QString whois (int messageId);
