@@ -305,6 +305,8 @@ void AirinServer::loadConfigFromDatabase()
     readonlyAllowed = config.value("allow_readonly", true).toBool();
     checkNamesDistinctness = config.value("check_name_distinctness", false).toBool();
     forceDefaultName = config.value("force_default_name", false).toBool();
+    discloseUserIds = config.value("disclose_user_ids", false).toBool();
+    useMiscInfoAsName = config.value("use_misc_as_name", false).toBool();
     deprecationMessage = config.value("deprecation_message", "Your API Level is deprecated, use higher one!").toString();
 
     log ("Database settings are loaded! :3", LL_INFO);
@@ -438,6 +440,20 @@ void AirinServer::processClientCommand(AirinClient *client, QString command)
                      .arg(clients.indexOf(client)).arg(client->hash()));
 
                 client->setExternalId(cachedUserId);
+
+                // This may conflict with the regex that checks usernames.
+                // But we'll assume that web-frontend that usually
+                // uses the SNS data will give us correct
+                // names. Users still won't be able to write mess there.
+                if (useMiscInfoAsName)
+                {
+                    QString miUserName = AirinDatabase::db->getMiscInfo(cachedUserId);
+                    if (!miUserName.isEmpty())
+                    {
+                        miUserName = miUserName.replace(QRegExp("\\s"), ""); // spaces are special for us
+                        client->setChatName(miUserName);
+                    }
+                }
 
                 AirinBanState isBanned = AirinDatabase::db->isUserBanned(client->externalId());
 
@@ -705,6 +721,7 @@ void AirinServer::processClientCommand(AirinClient *client, QString command)
         client->sendMessage(QString("SET min_message_delay #%1").arg(minMessageDelay));
         client->sendMessage(QString("SET max_log_message_amount #%1").arg(maxMessageAmount));
         client->sendMessage(QString("SET color_reset_attempts #%1").arg(colorResetMax));
+        client->sendMessage(QString("SET logins_disclosed #%1").arg(discloseUserIds ? "1" : "0"));
 
         return;
     }
@@ -768,12 +785,14 @@ void AirinServer::processMessage(AirinClient *client, QString recCode, QString m
             }
 
             // Messages should be sent independently on database
-            QString messageCommand = QString("CONTENT %1 %2 %3 %4 #%5")
+            QString messageCommand = QString("CONTENT %1 %2 %3 %4 %5 #%6")
                     .arg((messageId > 0) ? messageId : 0)
                     .arg(QDateTime::currentDateTime().toTime_t())
                     .arg(client->chatName())
                     .arg(client->chatColor())
+                    .arg(discloseUserIds ? client->externalId() : "null")
                     .arg(message);
+
 
             // Shadowban: message will be visible ONLY for client if it is shadowbanned
             if (client->isShadowBanned())
