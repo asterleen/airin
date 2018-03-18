@@ -99,6 +99,13 @@ AirinServer::AirinServer(QString config, QObject *parent) : QObject(parent), con
     connect (server, SIGNAL(newConnection()), this, SLOT(serverNewConnection()));
     log (QString("Airin listens on port %1 and waits for clients :3").arg(serverPort), LL_INFO);
 
+    if (useLogRequestQueue)
+    {
+        logRequestQueueTimer = new QTimer(this);
+        connect (logRequestQueueTimer, SIGNAL(timeout()), this, SLOT(flushLogRequestQueue()));
+        logRequestQueueTimer->start(logQueueFlushTimeout);
+    }
+
 
     serverReady = true; // ok to process new connections
 
@@ -174,27 +181,6 @@ QString AirinServer::defaultChatName()
     return defaultUserName;
 }
 
-void AirinServer::sendMotd(AirinClient *client, QString motdToSend)
-{
-    if (motdToSend.isEmpty())
-        return;
-
-    switch (client->apiLevel())
-    {
-        case 1 :
-            client->sendMessage(QString("CONTENT 0 1452281488 ~AirinMOTD~ %1 #%2").arg("f5f5f5").arg(motdToSend));
-            break;
-
-        case 2 :
-            client->sendMessage("SERVICE INFO #MOTD: "+motdToSend);
-            break;
-
-        case 3 : // MOTD supports API level 3 or higher
-        default:
-            client->sendMessage("MOTD #"+motdToSend);
-            break;
-    }
-}
 
 bool AirinServer::isOnline(QString externalId)
 {
@@ -300,6 +286,14 @@ void AirinServer::loadConfigFromDatabase()
     if (minMessageDelay <= 0 || minMessageDelay > 32) // delay of 32 seconds between messages is very slow for any chat
         minMessageDelay = 5;
 
+    maxLogQueryQueueLength = config.value("max_log_queue_length", 50).toUInt();
+    if (maxLogQueryQueueLength > 256)
+        maxLogQueryQueueLength = 10;
+
+    logQueueFlushTimeout = config.value("log_queue_flush_timeout", 500).toUInt();
+    if (maxLogQueryQueueLength > 10000)
+        maxLogQueryQueueLength = 500;
+
     delayTroll = config.value("delay_troll", false).toBool();
     defaultUserName = config.value("default_username", "Anonyamous").toString();
     readonlyAllowed = config.value("allow_readonly", true).toBool();
@@ -307,6 +301,7 @@ void AirinServer::loadConfigFromDatabase()
     forceDefaultName = config.value("force_default_name", false).toBool();
     discloseUserIds = config.value("disclose_user_ids", false).toBool();
     useMiscInfoAsName = config.value("use_misc_as_name", false).toBool();
+    useLogRequestQueue = config.value("use_log_request_queue", false).toBool();
     deprecationMessage = config.value("deprecation_message", "Your API Level is deprecated, use higher one!").toString();
 
     log ("Database settings are loaded! :3", LL_INFO);
@@ -828,8 +823,8 @@ void AirinServer::processMessageAPI(AirinClient *client, QString messageAmount,
 
     if (!valueCorrect || amount <= 0 || amount > maxMessageAmount)
     {
-        log ("Client requested no or wrong amount, setting it to default.");
-        amount = defaultMessageAmount;
+        client->sendMessage("FAIL 299 #Bad amount parameter");
+        return;
     }
 
     uint offset = messageOffset.toInt(&valueCorrect);
@@ -840,15 +835,48 @@ void AirinServer::processMessageAPI(AirinClient *client, QString messageAmount,
         offset = -1;
     }
 
+    AirinLogRequest req;
+    req.amount = amount;
+    req.from = offset;
+    req.order = order;
+    req.client = client;
+
+
+    if (useLogRequestQueue)
+        enqueueLogRequest(req);
+    else
+        respondLogRequest(req);
+
+}
+
+void AirinServer::enqueueLogRequest(AirinLogRequest req)
+{
+    if (!req.client->isReady())
+        return;
+
+    if ((uint)logRequests.count() < maxLogQueryQueueLength)
+        logRequests.append(req);
+    else
+        req.client->sendMessage("FAIL 299 #Log request queue is full, wait plz");
+}
+
+void AirinServer::respondLogRequest(AirinLogRequest req)
+{
+    if (!req.client->isReady())
+    {
+        log ("Trying to send logs to a disconnected client, aborting");
+        return;
+    }
+
     QList<AirinMessage> *messages;
 
-    if (offset > 0) // then user requested a part of the log
+    if (req.from > 0)
     {
-        messages = AirinDatabase::db->getMessages(amount, offset, client->externalId());
+        messages = AirinDatabase::db->getMessages(req.amount, req.from, req.client->externalId());
     }
         else // user requested just last N messages
     {
-        messages = AirinDatabase::db->getMessages(amount, 0, client->externalId());
+        messages = AirinDatabase::db->getMessages(req.amount, 0, req.client->externalId());
     }
 
     if (messages == NULL)
@@ -860,11 +888,11 @@ void AirinServer::processMessageAPI(AirinClient *client, QString messageAmount,
     int msCnt = messages->count(); // just caching, nothing special
     if (msCnt > 0)
     {
-        if (order == LogDescend)
+        if (req.order == LogDescend)
         {
             for (int i = msCnt - 1; i >= 0; i--)
             {
-                client->sendMessage(QString("LOGCON %1 %2 %3 %4 #%5")
+                req.client->sendMessage(QString("LOGCON %1 %2 %3 %4 #%5")
                                     .arg(messages->at(i).id)
                                     .arg(messages->at(i).timestamp.toTime_t())
                                     .arg((messages->at(i).name.isEmpty())
@@ -878,7 +906,7 @@ void AirinServer::processMessageAPI(AirinClient *client, QString messageAmount,
         {
             for (int i = 0; i < msCnt; i++)
             {
-                client->sendMessage(QString("LOGCON %1 %2 %3 %4 #%5")
+                req.client->sendMessage(QString("LOGCON %1 %2 %3 %4 #%5")
                                     .arg(messages->at(i).id)
                                     .arg(messages->at(i).timestamp.toTime_t())
                                     .arg((messages->at(i).name.isEmpty())
@@ -892,11 +920,10 @@ void AirinServer::processMessageAPI(AirinClient *client, QString messageAmount,
     else
     {
         log ("There were no messages matching client's request");
-        client->sendMessage("FAIL 206 #No messages");
+        req.client->sendMessage("FAIL 206 #No messages");
     }
 
     delete messages;
-
 }
 
 void AirinServer::sendGreeting(AirinClient *client)
@@ -1069,3 +1096,11 @@ void AirinServer::serverRestart()
     QProcess::startDetached(qApp->arguments()[0], qApp->arguments());
 }
 
+void AirinServer::flushLogRequestQueue()
+{
+    if (logRequests.count() > 0)
+    {
+        respondLogRequest(logRequests.first());
+        logRequests.removeFirst();
+    }
+}

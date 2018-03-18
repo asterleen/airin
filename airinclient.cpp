@@ -10,6 +10,7 @@ AirinClient::AirinClient(QWebSocket *sock, QObject *parent) : QObject(parent)
 {
     authorized = false;
     readonly = false;
+    ready = false;
     adminMode = false;
     shadowBanned = false;
     disconnectEmitted = false;
@@ -25,7 +26,7 @@ AirinClient::AirinClient(QWebSocket *sock, QObject *parent) : QObject(parent)
 
 AirinClient::~AirinClient()
 {
-
+    ready = false;
 }
 
 void AirinClient::setSocket(QWebSocket *sock)
@@ -34,7 +35,7 @@ void AirinClient::setSocket(QWebSocket *sock)
 
     socket = sock;
 
-    if (sock->request().hasRawHeader(QByteArray("X-Forwarded-For"))) // to support reverse proxies
+    if (sock->request().hasRawHeader(QByteArray("X-Forwarded-For")))
         clientRemoteAddress = "::ffff:"+QString(sock->request().rawHeader(QByteArray("X-Forwarded-For")));
     else
         clientRemoteAddress = sock->peerAddress().toString();
@@ -42,6 +43,8 @@ void AirinClient::setSocket(QWebSocket *sock)
     connect(socket, SIGNAL(textMessageReceived(QString)), this, SLOT(sockMessageReceived(QString)));
     connect(socket, SIGNAL(disconnected()), this, SLOT(sockDisconnected()));
     connect(socket, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(sockError(QAbstractSocket::SocketError)));
+
+    ready = true;
 }
 
 void AirinClient::setInitTimeout(uint timeout)
@@ -159,7 +162,8 @@ bool AirinClient::resetChatColor()
 
 void AirinClient::sendMessage(QString message)
 {
-    socket->sendTextMessage(message);
+    if (ready && socket->isValid() && socket->state() == QAbstractSocket::ConnectedState)
+        socket->sendTextMessage(message);
 }
 
 void AirinClient::resetPingMisses()
@@ -228,6 +232,11 @@ bool AirinClient::isReadonly()
     return readonly;
 }
 
+bool AirinClient::isReady()
+{
+    return ready;
+}
+
 uint AirinClient::apiLevel()
 {
     return protocolApiLevel;
@@ -240,6 +249,8 @@ void AirinClient::sockMessageReceived(QString message)
 
 void AirinClient::sockDisconnected()
 {
+    ready = false;
+
     if (!disconnectEmitted)
     {
         disconnectEmitted = true;
@@ -249,6 +260,8 @@ void AirinClient::sockDisconnected()
 
 void AirinClient::sockError(QAbstractSocket::SocketError error)
 {
+    ready = false;
+
     Q_UNUSED(error);
     if (!disconnectEmitted)
     {

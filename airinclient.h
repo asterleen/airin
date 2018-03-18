@@ -61,6 +61,7 @@ public:
     bool isAdmin();
     bool isShadowBanned();
     bool isReadonly();
+    bool isReady();
     uint apiLevel();
 
 
@@ -83,6 +84,7 @@ private:
 
     bool authorized;
     bool readonly;
+    bool ready;
     bool adminMode;
     bool shadowBanned;
     int pingMisses;

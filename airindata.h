@@ -10,13 +10,19 @@
 #include <QString>
 #include <QDateTime>
 #include <QMap>
+#include "airinclient.h"
 
-enum LogLevel {
+enum LogLevel { // this is for internal logging
     LL_NONE,
     LL_ERROR,
     LL_WARNING,
     LL_INFO,
     LL_DEBUG
+};
+
+enum LogOrder { // this is for LOG requests
+    LogAscend,
+    LogDescend
 };
 
 
@@ -42,6 +48,13 @@ struct AirinBanEntry {
     QString stateTag;
     QString stateDescription;
     AirinBanState state;
+};
+
+struct AirinLogRequest {
+    AirinClient *client;
+    uint amount;
+    uint from;
+    LogOrder order;
 };
 
 #endif // AIRINDATA_H

@@ -16,6 +16,7 @@
 #include <QFile>
 #include <QRegExp>
 #include <QSettings>
+#include <QTimer>
 
 #include <QWebSocket>
 #include <QWebSocketServer>
@@ -33,7 +34,7 @@
 #include "airincommands.h"
 
 
-#define AIRIN_VERSION "4.6.1-kk"
+#define AIRIN_VERSION "4.6.2"
 #define AIRIN_MAX_API_LEVEL 3
 #define AIRIN_MIN_API_LEVEL 2
 
@@ -45,13 +46,6 @@ public:
     explicit AirinServer(QString config, QObject *parent = 0);
     ~AirinServer();
 
-    enum LogOrder
-    {
-        LogAscend,
-        LogDescend
-    };
-
-
     // These interfaces are used by command processor
     uint clientsCount();
     QList<AirinClient *> getClients();
@@ -62,9 +56,7 @@ public:
     void broadcastForXId (QString externalId, QString message);
     void setShadowbanned (QString externalId, bool isShBanned);
     void setMotd(QString newMotd);
-    QString getMotd();
     QString defaultChatName();
-    void sendMotd (AirinClient *client, QString motdToSend);
     bool isOnline (QString externalId);
     bool isNameDistinct(AirinClient *client);
     void loadConfigFromDatabase();
@@ -77,11 +69,13 @@ private:
     LogLevel outputLogLevel;
     uint defaultMessageAmount;
     uint maxMessageAmount;
+    uint maxLogQueryQueueLength;
     uint maxMessageLen;
     uint maxNameLen;
     uint minMessageDelay;
     uint sqlServerPing;
     uint initTimeout;
+    uint logQueueFlushTimeout;
     uint colorResetMax;
     uint clientPingPollInterval;
     uint clientPingMissTolerance;
@@ -95,6 +89,7 @@ private:
     bool forceDefaultName;
     bool discloseUserIds;
     bool useMiscInfoAsName; // web-frontend must write appropriate content in `misc_info` field of `auth` table
+    bool useLogRequestQueue;
     QString hashSalt;
     QString logFile;
     QString sqlDbType;
@@ -109,6 +104,8 @@ private:
     QString deprecationMessage;
 
     QMap<QString, uint> lastMessageTime;
+    QList<AirinLogRequest> logRequests;
+    QTimer *logRequestQueueTimer;
 
     QWebSocketServer *server;
     QList<AirinClient *> clients;
@@ -124,6 +121,9 @@ private:
     void processMessage (AirinClient *client, QString recCode, QString message);
     void processMessageAPI (AirinClient *client, QString messageAmount,
                             QString messageOffset = QString(), LogOrder order = LogAscend);
+
+    void enqueueLogRequest (AirinLogRequest req);
+    void respondLogRequest (AirinLogRequest req);
 
     void sendGreeting(AirinClient *client);
 
@@ -145,6 +145,7 @@ public slots:
     void serverNewConnection();
     void serverRestart();
 
+    void flushLogRequestQueue();
 
 };
 
