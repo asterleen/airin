@@ -862,7 +862,10 @@ void AirinServer::enqueueLogRequest(AirinLogRequest req)
 
 void AirinServer::respondLogRequest(AirinLogRequest req)
 {
-    if (!req.client->isReady())
+    // This is the best and fault-free way to check is our client is still valid.
+    // If you know a better way to check the object existence and validity in C++/Qt
+    // feel free to send us a pull request at github.com/asterleen/airin
+    if (clients.indexOf(req.client) == -1)
     {
         log ("Trying to send logs to a disconnected client, aborting");
         return;
