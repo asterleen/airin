@@ -247,7 +247,7 @@ QList<AirinMessage> *AirinDatabase::getMessages(int amount, int from, QString us
 {
     from = (from <= 0) ? lastMessageId - amount + 1 : from;
     QSqlQuery qsqGetMsg;
-    qsqGetMsg.prepare("SELECT message_id, message_author_name, message_name_color, "
+    qsqGetMsg.prepare("SELECT message_id, message_author_name, message_name_color, message_author_login, "
                                   // [!] UNIX_TIMESTAMP needs a custom function in pgsql!
                       "message_text, UNIX_TIMESTAMP(message_timestamp) as timestamp "
                       "FROM messages "
@@ -277,6 +277,7 @@ QList<AirinMessage> *AirinDatabase::getMessages(int amount, int from, QString us
             msg.name = qsqGetMsg.value("message_author_name").toString();
             msg.timestamp = QDateTime::fromTime_t(qsqGetMsg.value("timestamp").toInt());
             msg.color = qsqGetMsg.value("message_name_color").toString();
+            msg.login = qsqGetMsg.value("message_author_login").toString();
             messages->append(msg);
         }
 
