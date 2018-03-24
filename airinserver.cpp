@@ -896,13 +896,14 @@ void AirinServer::respondLogRequest(AirinLogRequest req)
         {
             for (int i = msCnt - 1; i >= 0; i--)
             {
-                req.client->sendMessage(QString("LOGCON %1 %2 %3 %4 #%5")
+                req.client->sendMessage(QString("LOGCON %1 %2 %3 %4 %5 #%6")
                                     .arg(messages->at(i).id)
                                     .arg(messages->at(i).timestamp.toTime_t())
                                     .arg((messages->at(i).name.isEmpty())
                                          ? defaultUserName : messages->at(i).name)
                                     .arg (messages->at(i).color.isEmpty()
                                          ? "NULL" : messages->at(i).color)
+                                    .arg(discloseUserIds ? messages->at(i).login : "null")
                                     .arg(messages->at(i).message));
             }
         }
@@ -910,13 +911,14 @@ void AirinServer::respondLogRequest(AirinLogRequest req)
         {
             for (int i = 0; i < msCnt; i++)
             {
-                req.client->sendMessage(QString("LOGCON %1 %2 %3 %4 #%5")
+                req.client->sendMessage(QString("LOGCON %1 %2 %3 %4 %5 #%6")
                                     .arg(messages->at(i).id)
                                     .arg(messages->at(i).timestamp.toTime_t())
                                     .arg((messages->at(i).name.isEmpty())
                                          ? defaultUserName : messages->at(i).name)
                                     .arg (messages->at(i).color.isEmpty()
                                          ? "NULL" : messages->at(i).color)
+                                    .arg(discloseUserIds ? messages->at(i).login : "null")
                                     .arg(messages->at(i).message));
             }
         }
