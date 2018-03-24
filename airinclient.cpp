@@ -6,7 +6,7 @@
             Made by Asterleen ~ https://asterleen.com
 */
 
-AirinClient::AirinClient(QWebSocket *sock, QObject *parent) : QObject(parent)
+AirinClient::AirinClient(QWebSocket *sock, bool useXffHeader, QObject *parent) : QObject(parent)
 {
     authorized = false;
     readonly = false;
@@ -21,7 +21,7 @@ AirinClient::AirinClient(QWebSocket *sock, QObject *parent) : QObject(parent)
 
     pingTimer = NULL;
 
-    setSocket(sock);
+    setSocket(sock, useXffHeader);
 }
 
 AirinClient::~AirinClient()
@@ -29,13 +29,13 @@ AirinClient::~AirinClient()
     ready = false;
 }
 
-void AirinClient::setSocket(QWebSocket *sock)
+void AirinClient::setSocket(QWebSocket *sock, bool useXffHeader)
 {
     protocolApiLevel = 1;
 
     socket = sock;
 
-    if (sock->request().hasRawHeader(QByteArray("X-Forwarded-For")))
+    if (useXffHeader && sock->request().hasRawHeader(QByteArray("X-Forwarded-For")))
         clientRemoteAddress = "::ffff:"+QString(sock->request().rawHeader(QByteArray("X-Forwarded-For")));
     else
         clientRemoteAddress = sock->peerAddress().toString();

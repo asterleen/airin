@@ -302,6 +302,7 @@ void AirinServer::loadConfigFromDatabase()
     discloseUserIds = config.value("disclose_user_ids", false).toBool();
     useMiscInfoAsName = config.value("use_misc_as_name", false).toBool();
     useLogRequestQueue = config.value("use_log_request_queue", false).toBool();
+    useXffHeader = config.value("use_xff_header", false).toBool();
     deprecationMessage = config.value("deprecation_message", "Your API Level is deprecated, use higher one!").toString();
 
     log ("Database settings are loaded! :3", LL_INFO);
@@ -1011,15 +1012,20 @@ void AirinServer::serverNewConnection()
             continue;
         }
 
-        AirinClient *client = new AirinClient(sock);
+        AirinClient *client = new AirinClient(sock, useXffHeader);
 
         if (sock->request().hasRawHeader(QByteArray("X-Forwarded-For")))
-            log ("It seems that I'm behind the reverse proxy, I'll read X-Forwarded-For header to obtain the IP address");
+        {
+            if (useXffHeader)
+                log ("It seems that I'm behind the reverse proxy, I'll read X-Forwarded-For header to obtain the IP address");
+            else
+                log ("An X-Forwarded-For header is received but the server is configured to ignore it", LL_INFO);
+        }
 
         log (QString("Client address: %1").arg(client->remoteAddress()));
         log ("Enhashing client's address...");
         client->setSalt(hashSalt);
-        log (QString("Client UID (hash): %1").arg(client->hash()));
+        log (QString("Client UID (hash): %1").arg(client->hash())); // this is made because of historical reasons. we're sorry.
 
         log ("Initializing client's capabilities...");
         connect (client, SIGNAL(messageReceived(QString)), this, SLOT(clientMessage(QString)));

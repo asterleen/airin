@@ -90,6 +90,7 @@ private:
     bool discloseUserIds;
     bool useMiscInfoAsName; // web-frontend must write appropriate content in `misc_info` field of `auth` table
     bool useLogRequestQueue;
+    bool useXffHeader; // should we trust X-Forwarded-For header in WS handshake?
     QString hashSalt;
     QString logFile;
     QString sqlDbType;

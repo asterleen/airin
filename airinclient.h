@@ -18,7 +18,7 @@ class AirinClient : public QObject
 {
     Q_OBJECT
 public:
-    explicit AirinClient(QWebSocket *sock, QObject *parent = 0);
+    explicit AirinClient(QWebSocket *sock, bool useXffHeader = false, QObject *parent = 0);
     ~AirinClient();
 
     enum BanType
@@ -28,7 +28,7 @@ public:
         BanShadow
     };
 
-    void setSocket (QWebSocket *sock);
+    void setSocket (QWebSocket *sock, bool useXffHeader);
     void setInitTimeout (uint timeout);
     void setSalt(QString salt);
     void setApplication (QString app);
