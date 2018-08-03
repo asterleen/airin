@@ -781,7 +781,6 @@ void AirinServer::processMessage(AirinClient *client, QString recCode, QString m
                 if (messageId > -1)
                 {
                     log ("Message saved successfully with id "+QString::number(messageId));
-                    client->sendMessage(QString("CONREC %1 %2").arg(recCode).arg(messageId));
                 }
                     else
                 {
