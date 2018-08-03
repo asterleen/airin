@@ -47,8 +47,12 @@ AirinServer::AirinServer(QString config, QObject *parent) : QObject(parent), con
     if (!AirinDatabase::db->start(sqlHost, sqlDatabase, sqlUsername, sqlPassword))
     {
         if (continueWithoutDB)
+        {
             log ("Could not set up database, DB functions won't be available!", LL_WARNING);
-        else
+            log ("External auth is disabled due to database problems", LL_WARNING);
+            useXAuth = false;
+        }
+            else
         {
             log ("Could not set up the database, Airin will exit!", LL_ERROR);
             exit(2);
@@ -57,7 +61,9 @@ AirinServer::AirinServer(QString config, QObject *parent) : QObject(parent), con
     else
         log ("Database connection established.", LL_INFO);
 
-    // Database is ok? Lets fetch other settings!
+    // This is called independently on database connection
+    // success because it also will set defaults if
+    // the database is not available or disabled
     loadConfigFromDatabase();
 
     if (sqlServerPing > 0)
@@ -736,7 +742,7 @@ void AirinServer::processMessage(AirinClient *client, QString recCode, QString m
     uint lastTime = lastMessageTime.value(client->externalId(), 0),
          now = QDateTime::currentDateTime().toTime_t();
 
-    log (QString("Client %1 sent a message. His last message time is %2, now is %3.")
+    log (QString("Client %1 sent a message. Their last message time is %2, now is %3.")
          .arg(client->externalId()).arg(lastTime).arg(now));
 
     if (lastTime == 0 || now - lastTime > minMessageDelay)
@@ -765,20 +771,27 @@ void AirinServer::processMessage(AirinClient *client, QString recCode, QString m
         }
         else
         {
-            int messageId = AirinDatabase::db->addMessage(client->externalId(), message,
-                                                          client->chatName(), client->chatColor(),
-                                                          !client->isShadowBanned());
-            if (messageId > -1)
+            int messageId = 0;
+
+            if (useXAuth)
             {
-                log ("Message saved successfully with id "+QString::number(messageId));
-                client->sendMessage(QString("CONREC %1 %2").arg(recCode).arg(messageId));
+                messageId = AirinDatabase::db->addMessage(client->externalId(), message,
+                                                              client->chatName(), client->chatColor(),
+                                                              !client->isShadowBanned());
+                if (messageId > -1)
+                {
+                    log ("Message saved successfully with id "+QString::number(messageId));
+                    client->sendMessage(QString("CONREC %1 %2").arg(recCode).arg(messageId));
+                }
+                    else
+                {
+                    client->sendMessage("FAIL 299 #Internal Airin error");
+                    log ("Could not save message! Fcuk!", LL_WARNING);
+                    logAdmin("WARNING! Database error, see system logs!", LL_WARNING);
+                }
             }
-                else
-            {
-                client->sendMessage("FAIL 299 #Internal Airin error");
-                log ("Could not save message! Fcuk!", LL_WARNING);
-                logAdmin(QString("WARNING! Database error, see system logs!"), LL_WARNING);
-            }
+
+            client->sendMessage(QString("CONREC %1 %2").arg(recCode).arg(messageId));
 
             // Messages should be sent independently on database
             QString messageCommand = QString("CONTENT %1 %2 %3 %4 %5 #%6")
@@ -799,7 +812,7 @@ void AirinServer::processMessage(AirinClient *client, QString recCode, QString m
     }
         else
     {
-        log (QString("Client %1 tries to send messages too fast! GOLAKTEKO OPASNOSTE!")
+        log (QString("Client %1 tries to send messages too fastly! GOLAKTEKO OPASNOSTE!")
              .arg(client->externalId()));
 
         logAdmin(QString("Client %1 (%2) floods the chat, oh shit!")
