@@ -40,6 +40,7 @@ public:
 
     void setDatabaseType(DatabaseType dbt);
     bool start(QString host, QString database, QString username, QString password);
+    void setDatabaseActive (bool active);
 
     void setPing(uint minutes);
 
@@ -70,6 +71,7 @@ private:
     QSqlDatabase database;
     uint lastMessageId;
     QTimer *pingTimer;
+    bool databaseActive;
 
     DatabaseType dbType;
 

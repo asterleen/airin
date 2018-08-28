@@ -8,11 +8,21 @@
 
 AirinDatabase *AirinDatabase::db = 0;
 
-#define CHECK_DB(toReturn) if (!database.isOpen()) { emit databaseFailed(); return toReturn; }
+#define CHECK_DB(toReturn)\
+    if (!databaseActive) \
+        return toReturn; \
+    else \
+        if (!database.isOpen())\
+        { \
+            emit databaseFailed();\
+            databaseActive = false;\
+            return toReturn;\
+        }
 
 AirinDatabase::AirinDatabase(QObject *parent) : QObject(parent)
 {
     setDatabaseType(DatabaseMysql);
+    databaseActive = false;
 }
 
 AirinDatabase::~AirinDatabase()
@@ -49,6 +59,14 @@ bool AirinDatabase::start(QString host, QString databaseName, QString username, 
     log (QString("Setting up a %3 database connection on %1@%2...")
          .arg(databaseName).arg(host).arg(dbName), LL_DEBUG);
 
+    // Database connection reset
+    // See https://stackoverflow.com/questions/9519736/warning-remove-database
+    QString connection;
+    connection = database.connectionName();
+    database.close();
+    database = QSqlDatabase();
+    database.removeDatabase(connection);
+
     database = QSqlDatabase::addDatabase(dbDriver);
     database.setHostName(host);
     database.setDatabaseName(databaseName);
@@ -65,6 +83,8 @@ bool AirinDatabase::start(QString host, QString databaseName, QString username, 
     }
     else
     {
+        databaseActive = true;
+
         log ("Successfully connected to the database! :3", LL_INFO);
         log ("Trying to set up last message ID for further usage...");
         QSqlQuery qsqLastId;
@@ -78,6 +98,11 @@ bool AirinDatabase::start(QString host, QString databaseName, QString username, 
     }
 
     return ok;
+}
+
+void AirinDatabase::setDatabaseActive(bool active)
+{
+    databaseActive = active;
 }
 
 void AirinDatabase::setPing(uint minutes)
@@ -98,27 +123,36 @@ void AirinDatabase::setPing(uint minutes)
 QMap<QString, QVariant> AirinDatabase::getServerConfig()
 {
     log ("Getting configuration from the database...");
+
+    // This is an exceptional function.
+    // Other database functions call CHECK_DB macro which
+    // cause the database to reconnect on fault.
+    // But this function won't do it because
+    // AirinServer class will load the config defaults
+    // if it's impossible to fetch them from the database.
+
     QMap<QString, QVariant> config;
 
-    CHECK_DB(config);
-
-    QSqlQuery qsqGetConfig;
-    if (!qsqGetConfig.exec("SELECT conf_name, conf_value FROM server_config"))
+    if (databaseActive)
     {
-        log ("WARNING! Could not get settings from the database! Using defaults!", LL_WARNING);
-        log ("Database says: "+qsqGetConfig.lastError().text(), LL_WARNING);
-        log ("Query: "+qsqGetConfig.lastQuery());
-        return config;
+        QSqlQuery qsqGetConfig;
+        if (!qsqGetConfig.exec("SELECT conf_name, conf_value FROM server_config"))
+        {
+            log ("WARNING! Could not get settings from the database! Using defaults!", LL_WARNING);
+            log ("Database says: "+qsqGetConfig.lastError().text(), LL_WARNING);
+            log ("Query: "+qsqGetConfig.lastQuery());
+            return config;
+        }
+
+        while (qsqGetConfig.next())
+        {
+            log (QString("Adding parameter %1, value %2").arg(qsqGetConfig.value("conf_name").toString())
+                                                         .arg(qsqGetConfig.value("conf_value").toString()));
+            config.insert(qsqGetConfig.value("conf_name").toString(), qsqGetConfig.value("conf_value"));
+        }
     }
-
-    while (qsqGetConfig.next())
-    {
-        log (QString("Adding parameter %1, value %2").arg(qsqGetConfig.value("conf_name").toString())
-                                                     .arg(qsqGetConfig.value("conf_value").toString()));
-
-        config.insert(qsqGetConfig.value("conf_name").toString(), qsqGetConfig.value("conf_value"));
-
-    }
+    else
+        log ("Airin will use config defaults because database is inactive!", LL_WARNING);
 
     return config;
 }

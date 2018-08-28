@@ -10,111 +10,51 @@ AirinServer::AirinServer(QString config, QObject *parent) : QObject(parent), con
 {
     serverReady = false;
 
-    if (!QFile::exists(config))
-    {
-        if (config.isEmpty())
-            config = "<none>";
-
-        printf ("Configuration file %s does not exist. Airin will exit. Sorry m8.\n", config.toUtf8().data());
-        exit(-1);
-    }
-
-    loadConfig(config);
-
-    AirinLogger::instance = new AirinLogger(logFile, (LogLevel)outputLogLevel);
-
-    log ("Welcome to Airin 4 Chat Daemon! :3", LL_INFO);
-    log ("You're running Airin/"+QString(AIRIN_VERSION));
-
-    log ("Trying to set up database...");
-    AirinDatabase::db = new AirinDatabase();
-
-    AirinDatabase::DatabaseType dbt;
-
-    if (sqlDbType == "mysql")
-        dbt = AirinDatabase::DatabaseMysql;
-    else
-    if (sqlDbType == "pgsql")
-        dbt = AirinDatabase::DatabasePostgresql;
-    else
-    {
-        log ("Bad database type specified, exiting!");
-        exit(1);
-    }
-
-    AirinDatabase::db->setDatabaseType(dbt);
-
-    if (!AirinDatabase::db->start(sqlHost, sqlDatabase, sqlUsername, sqlPassword))
-    {
-        if (continueWithoutDB)
+        if (!QFile::exists(config))
         {
-            log ("Could not set up database, DB functions won't be available!", LL_WARNING);
-            log ("External auth is disabled due to database problems", LL_WARNING);
-            useXAuth = false;
+            if (config.isEmpty())
+                config = "<none>";
+
+            printf ("Configuration file %s does not exist. Airin will exit. Sorry m8.\n", config.toUtf8().data());
+            exit(-1);
         }
-            else
+
+        loadConfig(config);
+
+        AirinLogger::instance = new AirinLogger(logFile, (LogLevel)outputLogLevel);
+
+        log ("Welcome to Airin 4 Chat Daemon! :3", LL_INFO);
+        log ("You're running Airin/"+QString(AIRIN_VERSION));
+
+        log ("Trying to set up database...");
+        AirinDatabase::db = new AirinDatabase();
+        connect (AirinDatabase::db, SIGNAL(databaseFailed()), this, SLOT(databaseOnFault()));
+
+        AirinDatabase::DatabaseType dbt;
+
+        if (sqlDbType == "mysql")
+            dbt = AirinDatabase::DatabaseMysql;
+        else
+        if (sqlDbType == "pgsql")
+            dbt = AirinDatabase::DatabasePostgresql;
+        else
         {
-            log ("Could not set up the database, Airin will exit!", LL_ERROR);
-            exit(2);
+            log ("Bad database type specified, exiting!");
+            exit(1);
         }
-    }
-    else
-        log ("Database connection established.", LL_INFO);
 
-    // This is called independently on database connection
-    // success because it also will set defaults if
-    // the database is not available or disabled
-    loadConfigFromDatabase();
+        AirinDatabase::db->setDatabaseType(dbt);
 
-    if (sqlServerPing > 0)
-    {
-        log ("Setting up database touch subservice...");
-        AirinDatabase::db->setPing(sqlServerPing);
-    }
-    else
-        log ("Airin will not touch the SQL server. Keep in mind that SQL servers can go away!");
+        databaseReconnectCount = 0;
+        setupDatabase();
 
-
-    log (QString("Server will listen on %1 port.").arg(serverPort), LL_INFO);
-    log ("Creating server instance...");
-
-    server = new QWebSocketServer(QString("Airin/%1").arg(AIRIN_VERSION),
-                                    (serverSecure)
-                                    ? QWebSocketServer::SecureMode
-                                    : QWebSocketServer::NonSecureMode,
-                 this);
-
-    if (serverSecure)
-    {
-        log ("Server will try to run in secure (WSS) mode.", LL_INFO);
-        setupSsl();
-    }
-    else
-    {
-        log ("Server will run in non-secure (WS) mode.", LL_INFO);
-    }
-
-
-    log ("Starting to listen");
-    if (!server->listen(QHostAddress::Any, serverPort))
-    {
-        log ("Could not start the server! Exiting.", LL_ERROR);
-        exit(1);
-    }
-
-    connect (server, SIGNAL(newConnection()), this, SLOT(serverNewConnection()));
-    log (QString("Airin listens on port %1 and waits for clients :3").arg(serverPort), LL_INFO);
-
-    if (useLogRequestQueue)
-    {
-        logRequestQueueTimer = new QTimer(this);
-        connect (logRequestQueueTimer, SIGNAL(timeout()), this, SLOT(flushLogRequestQueue()));
-        logRequestQueueTimer->start(logQueueFlushTimeout);
-    }
-
-
-    serverReady = true; // ok to process new connections
-
+        if (sqlServerPing > 0)
+        {
+            log ("Setting up database touch subservice...");
+            AirinDatabase::db->setPing(sqlServerPing);
+        }
+        else
+            log ("Airin will not touch the SQL server. Keep in mind that SQL servers can go away!");
 }
 
 AirinServer::~AirinServer()
@@ -247,6 +187,10 @@ void AirinServer::loadConfig(QString configName)
     sqlServerPing = settings->value("server_ping", 0).toUInt();
     if (sqlServerPing > 7200) // 7200 minutes == 5 days
         sqlServerPing = 0;
+
+    maxDatabaseReconnectCount = settings->value("reconnect_attempts", 0).toUInt();
+    databaseRetryTimeout = settings->value("reconnect_timeout", 1000).toUInt();
+
     settings->endGroup();
 }
 
@@ -367,6 +311,54 @@ void AirinServer::setupSsl()
     sslConfiguration.setProtocol(QSsl::TlsV1_0OrLater);
 
     server->setSslConfiguration(sslConfiguration);
+}
+
+void AirinServer::setupServer()
+{
+    if (serverReady)
+    {
+        log ("Server is already running, won't re-setup it");
+        return;
+    }
+
+    log (QString("Server will listen on %1 port.").arg(serverPort), LL_INFO);
+    log ("Creating server instance...");
+
+    server = new QWebSocketServer(QString("Airin/%1").arg(AIRIN_VERSION),
+                                    (serverSecure)
+                                    ? QWebSocketServer::SecureMode
+                                    : QWebSocketServer::NonSecureMode,
+                 this);
+
+    if (serverSecure)
+    {
+        log ("Server will try to run in secure (WSS) mode.", LL_INFO);
+        setupSsl();
+    }
+    else
+    {
+        log ("Server will run in non-secure (WS) mode.", LL_INFO);
+    }
+
+
+    log ("Starting to listen");
+    if (!server->listen(QHostAddress::Any, serverPort))
+    {
+        log ("Could not start the server! Exiting.", LL_ERROR);
+        exit(1);
+    }
+
+    connect (server, SIGNAL(newConnection()), this, SLOT(serverNewConnection()));
+    log (QString("Airin listens on port %1 and waits for clients :3").arg(serverPort), LL_INFO);
+
+    if (useLogRequestQueue)
+    {
+        logRequestQueueTimer = new QTimer(this);
+        connect (logRequestQueueTimer, SIGNAL(timeout()), this, SLOT(flushLogRequestQueue()));
+        logRequestQueueTimer->start(logQueueFlushTimeout);
+    }
+
+    serverReady = true; // ok to process new connections
 }
 
 void AirinServer::processClientCommand(AirinClient *client, QString command)
@@ -1125,5 +1117,56 @@ void AirinServer::flushLogRequestQueue()
     {
         respondLogRequest(logRequests.first());
         logRequests.removeFirst();
+    }
+}
+
+void AirinServer::setupDatabase()
+{
+    if (AirinDatabase::db->start(sqlHost, sqlDatabase, sqlUsername, sqlPassword))
+    {
+        databaseReconnectCount = 0;
+
+        log ("Database connection established.", LL_INFO);
+        loadConfigFromDatabase();
+        setupServer();
+    }
+    else
+    {
+        databaseOnFault();
+    }
+}
+
+void AirinServer::databaseOnFault()
+{
+    log ("Something went wrong with the database!", LL_WARNING);
+
+    if (databaseReconnectCount < maxDatabaseReconnectCount)
+    {
+        databaseReconnectCount++;
+
+        log (QString ("Trying to recover database connection [%1/%2]...")
+             .arg(databaseReconnectCount).arg(maxDatabaseReconnectCount));
+
+        QTimer::singleShot(databaseRetryTimeout, this, SLOT(setupDatabase()));
+    }
+        else
+    {
+        if (continueWithoutDB)
+        {
+            log ("External auth is disabled due to database problems", LL_WARNING);
+            useXAuth = false;
+
+            // This is called independently on database connection
+            // success because it also will set defaults if
+            // the database is not available or disabled
+            loadConfigFromDatabase();
+
+            setupServer();
+        }
+            else
+        {
+            log ("Could not set up the database, Airin will exit!", LL_ERROR);
+            exit(2);
+        }
     }
 }

@@ -34,7 +34,8 @@
 #include "airincommands.h"
 
 
-#define AIRIN_VERSION "4.6.2"
+// Now the Cores of Airin Opensource and Provodach's one are on the same level
+#define AIRIN_VERSION "4.6.6-opensource"
 #define AIRIN_MAX_API_LEVEL 3
 #define AIRIN_MIN_API_LEVEL 2
 
@@ -79,6 +80,9 @@ private:
     uint colorResetMax;
     uint clientPingPollInterval;
     uint clientPingMissTolerance;
+    uint databaseRetryTimeout;
+    uint maxDatabaseReconnectCount;
+    uint databaseReconnectCount;
     bool serverSecure;
     bool delayTroll; // block user again and again by resetting the delay time counter
     bool useXAuth;
@@ -117,6 +121,7 @@ private:
 
     void loadConfig(QString configName);
     void setupSsl();
+    void setupServer();
 
     void processClientCommand (AirinClient *client, QString command);
     void processMessage (AirinClient *client, QString recCode, QString message);
@@ -147,6 +152,9 @@ public slots:
     void serverRestart();
 
     void flushLogRequestQueue();
+
+    void setupDatabase();
+    void databaseOnFault();
 
 };
 
