@@ -79,6 +79,7 @@ private slots:
     void pingSqlServer();
 
 signals:
+    void databaseFailed();
 
 public slots:
 };

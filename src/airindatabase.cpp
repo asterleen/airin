@@ -8,6 +8,8 @@
 
 AirinDatabase *AirinDatabase::db = 0;
 
+#define CHECK_DB(toReturn) if (!database.isOpen()) { emit databaseFailed(); return toReturn; }
+
 AirinDatabase::AirinDatabase(QObject *parent) : QObject(parent)
 {
     setDatabaseType(DatabaseMysql);
@@ -98,6 +100,8 @@ QMap<QString, QVariant> AirinDatabase::getServerConfig()
     log ("Getting configuration from the database...");
     QMap<QString, QVariant> config;
 
+    CHECK_DB(config);
+
     QSqlQuery qsqGetConfig;
     if (!qsqGetConfig.exec("SELECT conf_name, conf_value FROM server_config"))
     {
@@ -122,6 +126,8 @@ QMap<QString, QVariant> AirinDatabase::getServerConfig()
 bool AirinDatabase::saveConfigValue(QString key, QString value)
 {
     log (QString("Saving configuration entry, name %1, value %2").arg(key).arg(value));
+
+    CHECK_DB(false);
 
     QSqlQuery qsqConfigSave;
     qsqConfigSave.prepare("SELECT conf_name FROM server_config WHERE conf_name = ?");
@@ -165,6 +171,8 @@ bool AirinDatabase::saveConfigValue(QString key, QString value)
 
 AirinBanState AirinDatabase::isUserBanned(QString userLogin)
 {
+    CHECK_DB(BAN_NONE);
+
     QSqlQuery qsqBanCheck;
     qsqBanCheck.prepare("SELECT * FROM bans WHERE ban_login = ?");
     qsqBanCheck.addBindValue(userLogin);
@@ -203,6 +211,8 @@ AirinBanState AirinDatabase::isUserBanned(QString userLogin)
 
 bool AirinDatabase::isUserAdmin(QString userLogin)
 {
+    CHECK_DB(false);
+
     QSqlQuery qsqAdminCheck;
     qsqAdminCheck.prepare("SELECT COUNT(*) AS cnt FROM admin_users WHERE user_login = ?");
     qsqAdminCheck.addBindValue(userLogin);
@@ -210,7 +220,7 @@ bool AirinDatabase::isUserAdmin(QString userLogin)
     {
         log ("Could not execute this: "+qsqAdminCheck.lastQuery(), LL_DEBUG);
         log ("WARNING! Could not check ADMIN ACL for user: "+qsqAdminCheck.lastError().text(), LL_WARNING);
-        return true;
+        return false;
     }
         else
     {
@@ -222,6 +232,8 @@ bool AirinDatabase::isUserAdmin(QString userLogin)
 
 int AirinDatabase::addMessage(QString authorLogin, QString text, QString name, QString color, bool isVisible)
 {
+    CHECK_DB(-1);
+
     QSqlQuery qsqAdd;
     qsqAdd.prepare("INSERT INTO messages (message_author_login, message_text, "
                    "message_author_name, message_name_color, message_visible) VALUES (?,?,?,?,?)");
@@ -245,6 +257,8 @@ int AirinDatabase::addMessage(QString authorLogin, QString text, QString name, Q
 
 QList<AirinMessage> *AirinDatabase::getMessages(int amount, int from, QString userLogin)
 {
+    CHECK_DB(NULL);
+
     from = (from <= 0) ? lastMessageId - amount + 1 : from;
     QSqlQuery qsqGetMsg;
     qsqGetMsg.prepare("SELECT message_id, message_author_name, message_name_color, message_author_login, "
@@ -292,6 +306,8 @@ uint AirinDatabase::lastMessage()
 
 QString AirinDatabase::getUserId(QString internalToken)
 {
+    CHECK_DB(QString());
+
     QSqlQuery qsqUidGet;
     qsqUidGet.prepare("SELECT user_id, active FROM auth WHERE internal_token = ?");
     qsqUidGet.addBindValue(internalToken);
@@ -318,6 +334,8 @@ QString AirinDatabase::getUserId(QString internalToken)
 
 QString AirinDatabase::getMiscInfo(QString userLogin)
 {
+    CHECK_DB(QString());
+
     QSqlQuery qsqGetMisc;
     qsqGetMisc.prepare("SELECT misc_info FROM auth WHERE user_id = ?");
     qsqGetMisc.addBindValue(userLogin);
@@ -340,6 +358,8 @@ QString AirinDatabase::getMiscInfo(QString userLogin)
 
 bool AirinDatabase::killAuthSession(QString internalToken)
 {
+    CHECK_DB(false);
+
     QSqlQuery qsqKillSession;
     qsqKillSession.prepare("UPDATE auth SET active = false WHERE internal_token = ?");
     qsqKillSession.addBindValue(internalToken);
@@ -355,6 +375,8 @@ bool AirinDatabase::killAuthSession(QString internalToken)
 
 QString AirinDatabase::whois(int messageId)
 {
+    CHECK_DB(QString());
+
     QSqlQuery qsqWhois;
     qsqWhois.prepare("SELECT message_author_login FROM messages WHERE message_id = ?");
     qsqWhois.addBindValue(messageId);
@@ -374,6 +396,8 @@ QString AirinDatabase::whois(int messageId)
 
 bool AirinDatabase::setMessageStatus(int id, bool isActive)
 {
+    CHECK_DB(false);
+
     QSqlQuery qsqSetMsgStatus;
     qsqSetMsgStatus.prepare("UPDATE messages SET message_visible=? WHERE message_id=?");
     qsqSetMsgStatus.addBindValue(isActive);
@@ -385,6 +409,8 @@ bool AirinDatabase::setMessageStatus(int id, bool isActive)
 
 AirinMessage AirinDatabase::messageInfo(int id)
 {
+    CHECK_DB(AirinMessage());
+
     QSqlQuery qsqGetMsg;
     qsqGetMsg.prepare("SELECT message_id, message_visible, message_author_name, message_author_login, message_name_color, "
                       "message_text, UNIX_TIMESTAMP(message_timestamp) as timestamp "
@@ -421,6 +447,8 @@ AirinMessage AirinDatabase::messageInfo(int id)
 
 bool AirinDatabase::setUserBanned(QString login, AirinBanState state, QString comment)
 {
+    CHECK_DB(false);
+
     QString query;
 
     QSqlQuery qsqBanCheck;
@@ -454,6 +482,8 @@ bool AirinDatabase::setUserBanned(QString login, AirinBanState state, QString co
 
 QStringList AirinDatabase::userNames(QString login)
 {
+    CHECK_DB(QStringList());
+
     QSqlQuery qsqUserNames;
     qsqUserNames.prepare("SELECT DISTINCT message_author_name FROM messages WHERE message_author_login = ?");
     qsqUserNames.addBindValue(login);
@@ -475,6 +505,8 @@ QStringList AirinDatabase::userNames(QString login)
 QList<AirinBanEntry> AirinDatabase::getBans()
 {
     QList<AirinBanEntry> bans;
+
+    CHECK_DB(bans);
 
     QSqlQuery qsqGetBans;
     if (!qsqGetBans.exec("SELECT ban_login, ban_comment, ban_state_tag, ban_state_description, ban_state as ban_state_id FROM bans INNER JOIN ban_states ON bans.ban_state = ban_states.ban_state_id WHERE ban_state_id <> 0"))
